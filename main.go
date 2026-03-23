@@ -34,15 +34,19 @@ func (a *apiConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiConfig) AddUserHandler(w http.ResponseWriter, r *http.Request) {
-	var email string
-
-	if err := json.NewDecoder(r.Body).Decode(&email); err != nil {
-		a.RespondWithError(w, 404, "Must be an email address")
+	type parameters struct {
+		Email string `json:"email"`
 	}
 
-	newUser, err := a.dbQueries.CreateUser(r.Context(), email)
+	params := parameters{}
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		a.RespondWithError(w, 404, fmt.Sprint("Must be an email address: %v", err))
+	}
+
+	newUser, err := a.dbQueries.CreateUser(r.Context(), params.Email)
 	if err != nil {
-		a.RespondWithError(w, 500, "Error creating user")
+		a.RespondWithError(w, 403, fmt.Sprintf("Error creating user: %v", err))
+		return
 	}
 
 	user := User{
@@ -92,8 +96,14 @@ func (a *apiConfig) HitsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiConfig) ResetHandler(w http.ResponseWriter, r *http.Request) {
+	if os.Getenv("PLATFORM") != "dev" {
+		a.RespondWithError(w, 403, "Forbidden")
+	}
 	a.fileServerHits.Store(0)
-
+	_, err := a.dbQueries.DeleteUsers(r.Context())
+	if err != nil {
+		a.RespondWithError(w, 500, "Could not delete users from database.")
+	}
 }
 
 func (a *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -165,7 +175,7 @@ func main() {
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(fileHandler))
 	mux.HandleFunc("GET /admin/metrics", apiCfg.HitsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.ResetHandler)
-	mux.HandleFunc("POST /api/users")
+	mux.HandleFunc("POST /api/users", apiCfg.AddUserHandler)
 	mux.HandleFunc("POST /api/validate_chirp", apiCfg.ValidateChirp)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
