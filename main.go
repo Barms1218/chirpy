@@ -19,9 +19,17 @@ import (
 
 type User struct {
 	ID        uuid.UUID `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
 	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"last_updated"`
 	Email     string    `json:"email"`
+}
+
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
 }
 
 type apiConfig struct {
@@ -31,6 +39,48 @@ type apiConfig struct {
 
 func (a *apiConfig) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+}
+
+func (a *apiConfig) AddChirpHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	params := parameters{}
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		a.RespondWithError(w, 404, fmt.Sprintf("Bad Request: %v", err))
+	}
+	messageArray := strings.Split(params.Body, " ")
+
+	replacer := strings.NewReplacer(
+		"kerfuffle", "****",
+		"sharbert", "****",
+		"fornax", "****",
+		"Kerfuffle", "****",
+		"Sharbert", "****",
+		"Fornax", "****",
+	)
+
+	for i := range messageArray {
+		messageArray[i] = replacer.Replace(messageArray[i])
+	}
+	filteredString := strings.Join(messageArray, " ")
+
+	newChirp, err := a.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{Body: params.Body, UserID: params.UserID})
+	chirp := Chirp{
+		ID:        newChirp.ID,
+		CreatedAt: newChirp.CreatedAt,
+		UpdatedAt: newChirp.UpdatedAt,
+		Body:      filteredString,
+		UserID:    newChirp.UserID,
+	}
+
+	if err != nil {
+		a.RespondWithError(w, 500, fmt.Sprintf("Internal Error: %v", err))
+	}
+
+	a.RespondWithJson(w, 201, chirp)
 }
 
 func (a *apiConfig) AddUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +106,7 @@ func (a *apiConfig) AddUserHandler(w http.ResponseWriter, r *http.Request) {
 		Email:     newUser.Email,
 	}
 
-	a.RespondWithJson(w, 200, user)
+	a.RespondWithJson(w, 201, user)
 }
 
 func (a *apiConfig) RespondWithError(w http.ResponseWriter, code int, message string) {
@@ -114,48 +164,6 @@ func (a *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 
 }
 
-func (a *apiConfig) ValidateChirp(w http.ResponseWriter, r *http.Request) {
-	type returnVals struct {
-		Body string `json:"body"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	val := returnVals{}
-	err := decoder.Decode(&val)
-	if err != nil || len(val.Body) > 140 {
-		a.RespondWithError(w, http.StatusBadRequest, "Error decoding json request")
-		return
-	}
-
-	messageArray := strings.Split(val.Body, " ")
-
-	replacer := strings.NewReplacer(
-		"kerfuffle", "****",
-		"sharbert", "****",
-		"fornax", "****",
-		"Kerfuffle", "****",
-		"Sharbert", "****",
-		"Fornax", "****",
-	)
-
-	for i := range messageArray {
-		messageArray[i] = replacer.Replace(messageArray[i])
-	}
-	filteredString := strings.Join(messageArray, " ")
-
-	type filteredStruct struct {
-		Response string `json:"cleaned_body"`
-	}
-	type validStruct struct {
-		Response bool `json:"valid"`
-	}
-
-	a.RespondWithJson(w, 200, filteredStruct{
-		Response: filteredString,
-	})
-
-}
-
 func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
@@ -176,7 +184,7 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.HitsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.ResetHandler)
 	mux.HandleFunc("POST /api/users", apiCfg.AddUserHandler)
-	mux.HandleFunc("POST /api/validate_chirp", apiCfg.ValidateChirp)
+	mux.HandleFunc("POST /api/chirps", apiCfg.AddChirpHandler)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
@@ -187,5 +195,9 @@ func main() {
 		Handler: mux,
 	}
 
-	http.ListenAndServe(server.Addr, server.Handler)
+	log.Printf("Serving on port: %s\n", server.Addr)
+	err = server.ListenAndServe()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
