@@ -5,12 +5,17 @@ import (
 )
 
 func HashPasswordTest(t *testing.T) {
-	var testCase struct {
+	type testCase struct {
 		name     string
 		password string
-		hash     string
 		wantErr  bool
 	}
 
-	testCases := []testCase{}
+	testCases := []testCase{
+		{
+			name:     "Happy Path",
+			password: "Password123",
+			wantErr:  false,
+		},
+	}
 }
