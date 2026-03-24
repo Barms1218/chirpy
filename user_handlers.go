@@ -3,8 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"net/http"
+	"time"
 )
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+	Email     string    `json:"email"`
+}
 
 func (a *apiConfig) AddUserHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {

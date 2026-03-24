@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"github.com/chirpy/internal/database"
-	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -11,15 +10,7 @@ import (
 	"net/http"
 	"os"
 	"sync/atomic"
-	"time"
 )
-
-type User struct {
-	ID        uuid.UUID `json:"id"`
-	UpdatedAt time.Time `json:"updated_at"`
-	CreatedAt time.Time `json:"created_at"`
-	Email     string    `json:"email"`
-}
 
 type apiConfig struct {
 	fileServerHits atomic.Int32
